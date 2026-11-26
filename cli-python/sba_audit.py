@@ -74,6 +74,30 @@ def verify_sba_files(ledger_path: Path, limits_path: Path) -> dict[str, Any]:
     return payload
 
 
+
+
+def verify_batch_dir(batch_dir: Path) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    passed = 0
+    failed = 0
+    for d in sorted(p for p in batch_dir.iterdir() if p.is_dir()):
+        ledger, limits = d.joinpath('bank_ledger.csv'), d.joinpath('limits.json')
+        if not ledger.exists() or not limits.exists():
+            continue
+        try:
+            v = verify_sba_files(ledger, limits)
+            v['client'] = d.name
+            results.append(v)
+            passed += 1
+        except ValueError as exc:
+            results.append({'client': d.name, 'status': 'AUDIT_EXCEPTION', 'reason': str(exc)})
+            failed += 1
+    out: dict[str, Any] = {'mode': 'CPA_PORTFOLIO_BATCH', 'clients_audited': passed + failed, 'compliant_count': passed, 'exception_count': failed, 'clients': results}
+    canon = json.dumps(out, sort_keys=True, separators=(',', ':'))
+    out['portfolio_sha256'] = hashlib.sha256(canon.encode('utf-8')).hexdigest()
+    return out
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         sys.exit("Usage: python3 sba_audit.py <bank_ledger.csv> <limits.json>")

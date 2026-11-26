@@ -45,3 +45,23 @@ def test_owner_draw_rejected(tmp_path: Path) -> None:
     limits.write_text('{"expected_ending_balance_cents":0,"noi_cents":1,"debt_service_cents":1,"min_dscr_bps":1}', encoding="utf-8")
     with pytest.raises(ValueError, match="Prohibited category"):
         verify_sba_files(ledger, limits)
+
+
+def test_cpa_batch_dir(tmp_path: Path) -> None:
+    from sba_audit import verify_batch_dir
+
+    c1 = tmp_path.joinpath("client_alpha")
+    c1.mkdir()
+    c1.joinpath("bank_ledger.csv").write_text(
+        "tx_id,date,category,amount_cents,counterparty,receipt_hash\n"
+        "TX-1,2026-11-01,DISBURSEMENT,5000000,SBA,sha256:aaa\n",
+        encoding="utf-8",
+    )
+    c1.joinpath("limits.json").write_text(
+        '{"expected_ending_balance_cents":5000000,"noi_cents":2000000,"debt_service_cents":1000000,"min_dscr_bps":12500}',
+        encoding="utf-8",
+    )
+    res = verify_batch_dir(tmp_path)
+    assert res["clients_audited"] == 1
+    assert res["compliant_count"] == 1
+    assert len(res["portfolio_sha256"]) == 64
