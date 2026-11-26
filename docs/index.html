@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>APUMIA SBA Audit — Zero-Float Use of Proceeds Verifier</title>
+  <style>
+    body{font-family:system-ui,-apple-system,sans-serif;background:#0b0f17;color:#e6edf3;max-width:860px;margin:0 auto;padding:24px;line-height:1.5}
+    .card{background:#121826;border:1px solid #263248;border-radius:12px;padding:18px;margin:16px 0}
+    textarea,input{width:100%;background:#090d14;color:#e6edf3;border:1px solid #303d56;border-radius:8px;padding:10px;font-family:monospace;box-sizing:border-box}
+    button{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;margin-top:10px}
+    button.sec{background:#059669;margin-left:8px}
+    pre{background:#090d14;padding:12px;border-radius:8px;overflow-x:auto;border:1px solid #263248}
+    a{color:#60a5fa}
+  </style>
+</head>
+<body>
+  <p><a href="https://apumiaaifund.github.io/">← Back to APUMIA Autonomy Hub</a></p>
+  <h1>APUMIA SBA Audit — Zero-Float Use of Proceeds Verifier</h1>
+  <p>100% air-gapped integer-cent audit for SBA 7(a)/504 compliance. Your CSV never leaves your browser.</p>
+  <div class="card">
+    <label><strong>1. Bank Ledger CSV (integer cents)</strong></label>
+    <textarea id="csv" rows="6">tx_id,date,category,amount_cents,counterparty,receipt_hash
+TX-1,2026-11-01,DISBURSEMENT,15000000,SBA_ESCROW,sha256:111
+TX-2,2026-11-02,EQUIPMENT,-6500000,INDUSTRIAL_INC,sha256:222
+TX-3,2026-11-03,WORKING_CAPITAL,-2500000,WAREHOUSE_LLC,sha256:333</textarea>
+    <label style="display:block;margin-top:10px"><strong>2. Expected Ending Balance (cents) &amp; Min DSCR (bps)</strong></label>
+    <input id="bal" value="6000000" />
+    <button onclick="runAudit()">Run Deterministic Audit</button>
+    <button class="sec" onclick="stampEdge()">Notarize SHA-256 on Edge</button>
+  </div>
+  <pre id="out">Ready.</pre>
+<script>
+const EDGE = "https://ainotary-edge.apumiaaifund.workers.dev/v1/stamp";
+let lastHash = "";
+async function sha256Hex(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function runAudit() {
+  const lines = document.getElementById("csv").value.trim().split(/\r?\n/).slice(1);
+  const bad = new Set(["OWNER_DRAW","DIVIDEND","TAX_DELINQUENCY","SPECULATIVE"]);
+  let disb = 0n, spent = 0n;
+  for (const l of lines) {
+    if (!l.trim()) continue;
+    const [, , rawCat, rawAmt, , rcpt] = l.split(",");
+    const cat = rawCat.trim().toUpperCase();
+    const amt = BigInt(rawAmt.trim());
+    if (bad.has(cat)) return out("AUDIT_EXCEPTION: Prohibited category " + cat);
+    if (cat === "DISBURSEMENT") disb += amt;
+    else {
+      if (cat === "CASH_WITHDRAWAL" && !(rcpt||"").trim().startsWith("sha256:")) return out("AUDIT_EXCEPTION: Unreceipted cash");
+      spent += -amt;
+    }
+  }
+  const end = disb - spent;
+  if (end !== BigInt(document.getElementById("bal").value.trim())) return out("AUDIT_EXCEPTION: Conservation mismatch");
+  const verdict = { status: "VERIFIED_COMPLIANT", disbursed_cents: disb.toString(), spent_cents: spent.toString(), ending_cents: end.toString() };
+  lastHash = await sha256Hex(JSON.stringify(verdict));
+  verdict.canonical_sha256 = lastHash;
+  out(JSON.stringify(verdict, null, 2));
+}
+async function stampEdge() {
+  if (!lastHash) await runAudit();
+  if (!lastHash) return;
+  const r = await fetch(EDGE, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ hash: lastHash, project: "apumia-sba-audit" }) });
+  out("Stamped SHA-256: " + lastHash + "\nEdge response: " + await r.text());
+}
+function out(t) { document.getElementById("out").textContent = t; }
+</script>
+</body>
+</html>

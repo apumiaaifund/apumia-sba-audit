@@ -1,0 +1,9 @@
+[package]
+name = "apumia-sba-audit-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "apumia_sba_audit_core"
+path = "src/lib.rs"
