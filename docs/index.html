@@ -25,7 +25,7 @@ TX-1,2026-11-01,DISBURSEMENT,15000000,SBA_ESCROW,sha256:111
 TX-2,2026-11-02,EQUIPMENT,-6500000,INDUSTRIAL_INC,sha256:222
 TX-3,2026-11-03,WORKING_CAPITAL,-2500000,WAREHOUSE_LLC,sha256:333</textarea>
     <label style="display:block;margin-top:10px"><strong>2. Expected Ending Balance (cents) &amp; Min DSCR (bps)</strong></label>
-    <input id="bal" value="6000000" />
+    <input id="bal" value="6000000" /><label style="display:block;margin-top:10px"><strong>3. APUMIA Grant / Pro License Key (for Edge SHA-256 Seal)</strong></label><input id="gkey" placeholder="apumia_grant_... or sqa_pro_..." />
     <button onclick="runAudit()">Run Deterministic Audit</button>
     <button class="sec" onclick="stampEdge()">Notarize SHA-256 on Edge</button>
   </div>
@@ -63,10 +63,13 @@ async function runAudit() {
 async function stampEdge() {
   if (!lastHash) await runAudit();
   if (!lastHash) return;
-  const r = await fetch(EDGE, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ hash: lastHash, project: "apumia-sba-audit" }) });
+  const k = document.getElementById("gkey").value.trim();
+  if (!k) return out("Enter your apumia_grant_... key first (get one free on the main hub).");
+  const r = await fetch(EDGE, { method: "POST", headers: {"Content-Type":"application/json", "Authorization": "Bearer " + k}, body: JSON.stringify({ sha256_hash: lastHash, metadata: { repo: "apumia-sba-audit" } }) });
   out("Stamped SHA-256: " + lastHash + "\nEdge response: " + await r.text());
 }
 function out(t) { document.getElementById("out").textContent = t; }
+document.getElementById("gkey").value = new URLSearchParams(location.search).get("key") || "";
 </script>
 </body>
 </html>
